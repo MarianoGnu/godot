@@ -97,10 +97,17 @@
 		</Expand>
 	</Type>
 
+	<Type Name="CowData&lt;char32_t&gt;">
+		<DisplayString>"{_ptr,su32b}"</DisplayString>
+	</Type>
+	
 	<Type Name="String">
-		<DisplayString Condition="_cowdata._ptr == 0">[empty]</DisplayString>
-		<DisplayString Condition="_cowdata._ptr != 0">{_cowdata._ptr,s32}</DisplayString>
-		<StringView Condition="_cowdata._ptr != 0">_cowdata._ptr,s32</StringView>
+		<DisplayString Condition="(char32_t*)result_id == 0">{{Empty}}</DisplayString>
+		<DisplayString>"{((char32_t*)result_id),s32b}"</DisplayString>
+		<Expand>
+			<Item Name="String">((char32_t*)result_id),s32b</Item>
+			<Item Name="[_cowdata]">(CowData&lt;char32_t&gt;*)this</Item>
+		</Expand>
 	</Type>
 
 	<Type Name="StringName">
