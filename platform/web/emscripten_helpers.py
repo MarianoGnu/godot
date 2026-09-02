@@ -30,12 +30,19 @@ def create_engine_file(env, target, source, externs, threads_enabled):
     return env.Substfile(target=target, source=[env.File(s) for s in source], SUBST_DICT=subst_dict)
 
 
-def create_template_zip(env, js, wasm, side):
+def create_template_zip(
+    env,
+    js,
+    main_wasm,
+    side_wasm=None,
+    main_wasm_dwarf=None,
+    side_wasm_dwarf=None,
+):
     binary_name = "godot.editor" if env.editor_build else "godot"
     zip_dir = env.Dir(env.GetTemplateZipPath())
     in_files = [
         js,
-        wasm,
+        main_wasm,
         "#platform/web/js/libs/audio.worklet.js",
         "#platform/web/js/libs/audio.position.worklet.js",
     ]
@@ -46,9 +53,18 @@ def create_template_zip(env, js, wasm, side):
         zip_dir.File(binary_name + ".audio.position.worklet.js"),
     ]
     # Dynamic linking (extensions) specific.
-    if env["dlink_enabled"]:
-        in_files.append(side)  # Side wasm (contains the actual Godot code).
+    if side_wasm is not None:
+        in_files.append(side_wasm)  # Side wasm (contains the actual Godot code).
         out_files.append(zip_dir.File(binary_name + ".side.wasm"))
+
+    # The DWARF files cannot be renamed, as their relative .wasm file has their name baked in the
+    # binary. They must also reside besides their original .wasm files.
+    if main_wasm_dwarf is not None:
+        in_files.append(main_wasm_dwarf)
+        out_files.append(zip_dir.File(main_wasm_dwarf.name))
+    if side_wasm_dwarf is not None:
+        in_files.append(side_wasm_dwarf)
+        out_files.append(zip_dir.File(side_wasm_dwarf.name))
 
     service_worker = "#misc/dist/html/service-worker.js"
     if env.editor_build:

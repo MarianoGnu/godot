@@ -1,29 +1,27 @@
 const Preloader = /** @constructor */ function () { // eslint-disable-line no-unused-vars
-	function getTrackedResponse(response, load_status) {
-		function onloadprogress(reader, controller) {
+	function trackResponse(response, load_status) {
+		function trackReader(reader) {
 			return reader.read().then(function (result) {
 				if (load_status.done) {
 					return Promise.resolve();
 				}
 				if (result.value) {
-					controller.enqueue(result.value);
 					load_status.loaded += result.value.length;
 				}
 				if (!result.done) {
-					return onloadprogress(reader, controller);
+					return trackReader(reader);
 				}
 				load_status.done = true;
 				return Promise.resolve();
 			});
 		}
-		const reader = response.body.getReader();
-		return new Response(new ReadableStream({
-			start: function (controller) {
-				onloadprogress(reader, controller).then(function () {
-					controller.close();
-				});
-			},
-		}), { headers: response.headers });
+		// Track progress on a clone so the original response (and its URL, needed to resolve the
+		// separate DWARF symbols file) is passed untouched to `WebAssembly.instantiateStreaming`.
+		const reader = response.clone().body.getReader();
+		trackReader(reader).catch(function () {
+			load_status.done = true;
+		});
+		return response;
 	}
 
 	function loadFetch(file, tracker, fileSize, raw) {
@@ -36,11 +34,11 @@ const Preloader = /** @constructor */ function () { // eslint-disable-line no-un
 			if (!response.ok) {
 				return Promise.reject(new Error(`Failed loading file '${file}'`));
 			}
-			const tr = getTrackedResponse(response, tracker[file]);
+			const tracked = trackResponse(response, tracker[file]);
 			if (raw) {
-				return Promise.resolve(tr);
+				return Promise.resolve(tracked);
 			}
-			return tr.arrayBuffer();
+			return tracked.arrayBuffer();
 		});
 	}
 

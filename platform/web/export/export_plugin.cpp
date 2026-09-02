@@ -90,7 +90,13 @@ Error EditorExportPlatformWeb::_extract_template(const String &p_template, const
 		unzCloseCurrentFile(pkg);
 
 		//write
-		String dst = p_dir.path_join(file.replace("godot", p_name));
+		String dst;
+		// The DWARF files cannot be renamed, as their name is baked into the relative .wasm binary.
+		if (!file.begins_with("godot") || !file.ends_with(".dwarf.wasm")) {
+			dst = p_dir.path_join(file.replace("godot", p_name));
+		} else {
+			dst = p_dir.path_join(file);
+		}
 		Ref<FileAccess> f = FileAccess::open(dst, FileAccess::WRITE);
 		if (f.is_null()) {
 			add_message(EXPORT_MESSAGE_ERROR, TTR("Prepare Templates"), vformat(TTR("Could not write file: \"%s\"."), dst));
@@ -864,6 +870,9 @@ Error EditorExportPlatformWeb::_export_project(const Ref<EditorExportPreset> &p_
 		DirAccess::remove_file_or_error(basepath + ".png");
 		DirAccess::remove_file_or_error(basepath + ".side.wasm");
 		DirAccess::remove_file_or_error(basepath + ".wasm");
+		// DWARF files keep their original "godot" name (see `_extract_template`).
+		DirAccess::remove_file_or_error(dest.path_join("godot.dwarf.wasm"));
+		DirAccess::remove_file_or_error(dest.path_join("godot.side.dwarf.wasm"));
 		DirAccess::remove_file_or_error(basepath + ".icon.png");
 		DirAccess::remove_file_or_error(basepath + ".apple-touch-icon.png");
 	}
