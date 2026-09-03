@@ -82,6 +82,11 @@ def create_template_zip(
             "inter-bold.woff2",
         ]
         opt_cache = ["godot.editor.wasm"]
+        fileSizes = {
+            os.path.basename(binary_name + ".wasm"): os.path.getsize(main_wasm),
+        }
+        if side_wasm is not None:
+            fileSizes[binary_name + ".side.wasm"] = os.path.getsize(side_wasm)
         subst_dict = {
             "___GODOT_VERSION___": get_build_version(False),
             "___GODOT_NAME___": "GodotEngine",
@@ -90,6 +95,7 @@ def create_template_zip(
             "___GODOT_OFFLINE_PAGE___": "offline.html",
             "___GODOT_THREADS_ENABLED___": "true" if env["threads"] else "false",
             "___GODOT_ENSURE_CROSSORIGIN_ISOLATION_HEADERS___": "true",
+            "___GODOT_EDITOR_FILESIZES___": json.dumps(fileSizes),
         }
         html = env.Substfile(target="#bin/godot${PROGSUFFIX}.html", source=html, SUBST_DICT=subst_dict)
         in_files.append(html)
