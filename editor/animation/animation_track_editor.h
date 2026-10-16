@@ -833,6 +833,11 @@ class AnimationTrackEditor : public VBoxContainer {
 
 	void _select_all_tracks_for_copy();
 
+	PopupMenu *menu;
+
+	void _popup_paste_tracks_context_menu(const Vector2 &p_popup_pos);
+	void _menu_selected();
+
 	void _edit_menu_about_to_popup();
 	void _edit_menu_pressed(int p_option);
 	bool scale_from_cursor = false;
@@ -891,7 +896,9 @@ class AnimationTrackEditor : public VBoxContainer {
 		struct Key {
 			Animation::TrackType track_type;
 			int track;
+			NodePath path;
 			float time = 0;
+			float time_abs = 0;
 			float transition = 0;
 			Variant value;
 			Animation::HandleMode handle_mode = Animation::HANDLE_MODE_FREE;
@@ -916,6 +923,8 @@ class AnimationTrackEditor : public VBoxContainer {
 protected:
 	static void _bind_methods();
 	void _notification(int p_what);
+
+	virtual void gui_input(const Ref<InputEvent> &p_event) override;
 
 public:
 	// Public for use as signal callback.

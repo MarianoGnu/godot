@@ -5695,6 +5695,23 @@ void AnimationTrackEditor::_notification(int p_what) {
 	}
 }
 
+void AnimationTrackEditor::gui_input(const Ref<InputEvent> &p_event) {
+	Ref<InputEventMouseButton> mb = p_event;
+	if (mb.is_valid() && mb->is_pressed() && mb->get_button_index() == MouseButton::RIGHT) {
+		// Clicks on tracks will be captured by AnimationTrackEdit
+		Point2 pos = mb->get_position();
+		if (pos.x >= timeline->get_name_limit() && pos.x <= get_size().width - timeline->get_buttons_width()) {
+			// Can do something with menu too! show insert key.
+			if (!read_only) {
+				Vector2 popup_pos = get_screen_position() + get_local_mouse_position();
+				// Use call_deferred to wait for the selected keys being updated.
+				_popup_paste_tracks_context_menu(popup_pos);
+				accept_event();
+			}
+		}
+	}
+}
+
 void AnimationTrackEditor::_update_scroll(double) {
 	_redraw_tracks();
 	_redraw_groups();
@@ -6824,9 +6841,11 @@ void AnimationTrackEditor::_set_key_clipboard(int p_top_track, float p_top_time,
 	key_clipboard.top_track = p_top_track;
 	for (RBMap<SelectedKey, KeyInfo>::Element *E = p_keys.back(); E; E = E->prev()) {
 		KeyClipboard::Key k;
+		k.path = animation->track_get_path(E->key().track);
 		k.value = animation->track_get_key_value(E->key().track, E->key().key);
 		k.transition = animation->track_get_key_transition(E->key().track, E->key().key);
 		k.time = E->value().pos - p_top_time;
+		k.time_abs = E->value().pos;
 		k.track = E->key().track - p_top_track;
 		k.track_type = animation->track_get_type(E->key().track);
 		if (k.track_type == Animation::TYPE_BEZIER) {
@@ -8101,6 +8120,68 @@ void AnimationTrackEditor::_show_dummy_player_warning() {
 void AnimationTrackEditor::_show_inactive_player_warning() {
 	EditorNode::get_singleton()->show_warning(
 			TTR("AnimationPlayer is inactive. The playback will not be processed."));
+}
+
+void AnimationTrackEditor::_popup_paste_tracks_context_menu(const Vector2 &p_popup_pos) {
+	if (animation.is_null() || !is_key_clipboard_active()) {
+		return;
+	}
+
+	if (!menu) {
+		menu = memnew(PopupMenu);
+		add_child(menu);
+		menu->connect(SceneStringName(id_pressed), callable_mp(this, &AnimationTrackEditor::_menu_selected).unbind(1));
+	}
+
+	menu->clear();
+	menu->add_icon_item(get_editor_theme_icon(SNAME("ActionPaste")), TTR("Paste Key(s) in matching or new Tracks"));
+	menu->reset_size();
+
+	menu->set_position(p_popup_pos);
+	menu->popup();
+}
+
+void AnimationTrackEditor::_menu_selected() {
+	// Only option in this menu is "Paste Key(s) in matching or new Tracks""
+
+	// 1. Find or create matching tracks
+	EditorUndoRedoManager *undo_redo = EditorUndoRedoManager::get_singleton();
+	undo_redo->create_action(TTR("Paste Key(s)"));
+	HashMap<int, int> track_remap;
+	HashSet<int> added_tracks;
+	int next_track = animation->get_track_count();
+	for (const KeyClipboard::Key &k : key_clipboard.keys) {
+		int track = -1;
+		if (track_remap.has(k.track)) {
+			track = track_remap.get(k.track);
+		} else {
+			// Find existing track.
+			for (int i = 0; i < animation->get_track_count(); i++) {
+				if (animation->track_get_path(i) == k.path || animation->track_get_type(i) == k.track_type) {
+					track = i;
+					track_remap.insert(k.track, i);
+					break;
+				}
+			}
+		}
+		if (track == -1) { // Not Found, Create one.
+			track = next_track;
+			added_tracks.insert(track);
+			track_remap.insert(k.track, track);
+			undo_redo->add_do_method(animation.ptr(), "add_track", k.track_type);
+			undo_redo->add_do_method(animation.ptr(), "track_set_path", track, k.path);
+			// When removing tracks, the id shifts, so we always remove the first one
+			undo_redo->add_undo_method(animation.ptr(), "remove_track", *added_tracks.begin());
+			next_track++;
+		}
+		float time = k.time_abs;
+		undo_redo->add_do_method(animation.ptr(), "track_insert_key", track, time, k.value, k.transition);
+		if (!added_tracks.has(track)) { // Added track is removed entirely, no need for undo step
+			undo_redo->add_undo_method(animation.ptr(), "track_remove_key_at_time", track, time);
+		}
+	}
+
+	undo_redo->commit_action();
 }
 
 void AnimationTrackEditor::_select_all_tracks_for_copy() {
