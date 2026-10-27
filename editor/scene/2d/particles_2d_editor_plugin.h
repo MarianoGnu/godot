@@ -33,6 +33,7 @@
 #include "editor/scene/particles_editor_plugin.h"
 
 class EditorFileDialog;
+class GPUParticles2D;
 class MarginContainer;
 class LineEdit;
 
@@ -115,8 +116,16 @@ class GPUParticles2DEditorPlugin : public Particles2DEditorPlugin {
 
 	ConfirmationDialog *generate_visibility_rect = nullptr;
 	SpinBox *generate_seconds = nullptr;
+	struct {
+		float elapsed_time = 0.0;
+		Rect2 rect;
+	} generate_visibility_rect_data;
 
 	void _generate_visibility_rect();
+	void _collect_visibility_step_prewarm();
+	void _collect_visibility_step_bake(GPUParticles2D *p_particles, float p_time);
+	void _collect_visibility_step_update_data(GPUParticles2D *p_particles);
+	void _collect_visibility_step_commit(GPUParticles2D *p_particles, bool p_was_emitting);
 
 protected:
 	void _menu_callback(int p_idx) override;

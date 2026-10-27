@@ -387,40 +387,63 @@ void GPUParticles2DEditorPlugin::_generate_visibility_rect() {
 
 	double time = generate_seconds->get_value();
 
-	float running = 0.0;
+	generate_visibility_rect_data.elapsed_time = 0.0;
+	generate_visibility_rect_data.rect = Rect2();
 
-	EditorProgress ep("gen_vrect", TTR("Generating Visibility Rect (Waiting for Particle Simulation)"), int(time));
+	EditorCommandQueue *command = EditorNode::get_singleton()->start_editor_process("gen_vrect", TTR("Generating Visibility Rect (Waiting for Particle Simulation)"), int(time), false, true);
+	//EditorProgress ep("gen_vrect", TTR("Generating Visibility Rect (Waiting for Particle Simulation)"), int(time));
 
 	bool was_emitting = particles->is_emitting();
 	if (!was_emitting) {
 		particles->set_emitting(true);
-		OS::get_singleton()->delay_usec(1000);
+		command->add_step(TTR("Initializing..."), 0, callable_mp(this, &GPUParticles2DEditorPlugin::_collect_visibility_step_prewarm).bind());
 	}
 
-	Rect2 rect;
-	while (running < time) {
+	for (float elapsed = 1.0; elapsed <= time; elapsed += 1.0) {
+		command->add_step(TTR("Generating..."), int(elapsed), callable_mp(this, &GPUParticles2DEditorPlugin::_collect_visibility_step_bake).bind(particles, elapsed));
+	}
+
+	command->add_step(TTR("Set Value"), int(time), callable_mp(this, &GPUParticles2DEditorPlugin::_collect_visibility_step_commit).bind(particles, was_emitting));
+}
+
+void GPUParticles2DEditorPlugin::_collect_visibility_step_prewarm() {
+	OS::get_singleton()->delay_usec(1000);
+}
+
+void GPUParticles2DEditorPlugin::_collect_visibility_step_bake(GPUParticles2D *p_particles, float p_time) {
+	while (generate_visibility_rect_data.elapsed_time < p_time) {
 		uint64_t ticks = OS::get_singleton()->get_ticks_usec();
-		ep.step(TTR("Generating..."), int(running), true);
-		OS::get_singleton()->delay_usec(1000);
+		OS::get_singleton()->delay_usec(100000);
+		print_line(vformat("elapsed time %.3f", (OS::get_singleton()->get_ticks_usec() - ticks) / 1000000.0));
 
-		Rect2 capture = particles->capture_rect();
-		if (rect == Rect2()) {
-			rect = capture;
-		} else {
-			rect = rect.merge(capture);
-		}
+		callable_mp(this, &GPUParticles2DEditorPlugin::_collect_visibility_step_update_data).bind(p_particles).call_deferred();
 
-		running += (OS::get_singleton()->get_ticks_usec() - ticks) / 1000000.0;
+		generate_visibility_rect_data.elapsed_time += (OS::get_singleton()->get_ticks_usec() - ticks) / 1000000.0;
 	}
+}
 
-	if (!was_emitting) {
-		particles->set_emitting(false);
+void GPUParticles2DEditorPlugin::_collect_visibility_step_update_data(GPUParticles2D *p_particles) {
+	Rect2 capture = p_particles->capture_rect();
+	if (generate_visibility_rect_data.rect == Rect2()) {
+		generate_visibility_rect_data.rect = capture;
+	} else {
+		generate_visibility_rect_data.rect = generate_visibility_rect_data.rect.merge(capture);
+	}
+}
+
+void GPUParticles2DEditorPlugin::_collect_visibility_step_commit(GPUParticles2D *p_particles, bool p_was_emitting) {
+	if (Thread::get_caller_id() != Thread::MAIN_ID) {
+		callable_mp(this, &GPUParticles2DEditorPlugin::_collect_visibility_step_commit).bind(p_particles, p_was_emitting).call_deferred();
+		return;
+	}
+	if (!p_was_emitting) {
+		p_particles->set_emitting(false);
 	}
 
 	EditorUndoRedoManager *undo_redo = EditorUndoRedoManager::get_singleton();
 	undo_redo->create_action(TTR("Generate Visibility Rect"));
-	undo_redo->add_do_method(particles, "set_visibility_rect", rect);
-	undo_redo->add_undo_method(particles, "set_visibility_rect", particles->get_visibility_rect());
+	undo_redo->add_do_method(p_particles, "set_visibility_rect", generate_visibility_rect_data.rect);
+	undo_redo->add_undo_method(p_particles, "set_visibility_rect", p_particles->get_visibility_rect());
 	undo_redo->commit_action();
 }
 
